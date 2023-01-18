@@ -1,4 +1,3 @@
-#!/usr/bin/python
 """
 libsmashhit patcher tool
 """
@@ -11,6 +10,8 @@ import json
 import os
 import sys
 import struct
+
+VERSION = (0, 2, 0)
 
 class File():
 	"""
@@ -81,6 +82,19 @@ def patch_encryption(f, value):
 	f.patch(0x567e8, b"\xc0\x03\x5f\xd6")
 	f.patch(0x5672c, b"\xc0\x03\x5f\xd6")
 
+def patch_key(f, value):
+	if (not value):
+		tkinter.messagebox.showwarning("Change key warning", "The encryption key will be set to Smash Hit's default key, 5m45hh1t41ght, since you did not set one.")
+		value = "5m45hh1t41ght"
+	
+	key = value.encode('utf-8')
+	
+	if (len(key) >= 24):
+		tkinter.messagebox.showwarning("Change key warning", "Your encryption key is longer than 23 bytes, so it has been truncated.")
+		key = key[:23]
+	
+	f.patch(0x1f3ca8, key + (b"\x00" * (24 - len(key))))
+
 def patch_balls(f, value):
 	if (not value):
 		tkinter.messagebox.showerror("Patch balls error", "You didn't put in a value for how many balls you want to start with. Balls won't be patched!")
@@ -101,12 +115,59 @@ def patch_fov(f, value):
 	
 	f.patch(0x1c945c, struct.pack("<f", float(value)))
 
+def patch_realpaths_segments(f, value):
+	f.patch(0x2119f8, b"\x00")
+
+def patch_realpaths(f, value):
+	f.patch(0x2118e8, b"\x00")
+	f.patch(0x1f48c0, b"\x00")
+
+def patch_package(f, value):
+	### FIRST ATTEMPT ... to replace 'string' with 'package'
+	
+	# Here. Lies. Madness.
+	# f.patch(0x24d400, b"\xc8\x6a\x2f\x00\x00\x00\x00\x00")
+	# f.patch(0x24d408, b"\xa8\xac\x1a\x00\x00\x00\x00\x00")
+	
+	### SECOND ATTEMPT ... to just add it after the loop
+	
+	# In luaL_openlibs
+	# f.patch(0x947a8, b"\x97\xfd\x04\x14")  # b 0x002d3e04
+	
+	# In Editor::Editor
+	# f.patch(0x1d3e00, b"\xc0\x03\x5f\xd6") # ret
+	
+	# LABEL                                  0x002d3e04
+	# f.patch(0x1d3e04, b"\x73\x82\x0f\x91") # add x19, x19, #0x3e0 -- what we replaced the branch with above
+	# f.patch(0x1d3e08, b"\x69\x02\xfb\x17") # b 0x001947ac (start of loop)
+	
+	### THIRD ATTEMPT ... to chain it on after luaopen_base
+	# This one worked, even if its the worst hack :D
+	
+	f.patch(0xa71b8, b"\xe0\x03\x13\xaa") # Preserve param_1
+	f.patch(0xa71c8, b"\xb8\x0e\x00\x14") # Chain to luaopen_package
+	f.patch(0xaaef4, b"\xe0\x03\x13\xaa") # Preserve param_1
+	f.patch(0xaaf08, b"\xb1\xf0\xff\x17") # Chain to luaopen_io
+	f.patch(0xa748c, b"\xe0\x03\x13\xaa") # Preserve param_1
+	f.patch(0xa74a0, b"\xd1\xfe\xff\x17") # Chain to luaopen_os
+	f.patch(0xa7004, b"\xa0\x00\x80\x52") # Set return to 5 (2 + 1 + 1 + 1 = 5)
+	f.patch(0xa7010, b"\xc0\x03\x5f\xd6") # Make sure last is return (not really needed)
+
+def patch_vertical(f, value):
+	f.patch(0x46828, b"\x47\x00\x00\x14") # Patch an if (gWidth < gHeight)
+	f.patch(0x46a48, b"\x1f\x20\x03\xd5") # Another if ...
+
 PATCH_LIST = {
 	"antitamper": patch_antitamper,
 	"premium": patch_premium,
 	"encryption": patch_encryption,
+	"key": patch_key,
 	"balls": patch_balls,
 	"fov": patch_fov,
+	"realpaths_segments": patch_realpaths_segments,
+	"realpaths": patch_realpaths,
+	"package": patch_package,
+	"vertical": patch_vertical,
 }
 
 def applyPatches(location, patches):
@@ -204,7 +265,7 @@ class Window():
 		self.window.mainloop()
 
 def gui(default_path = None):
-	w = Window("Smash Hit Binary Modification Tool", "520x560")
+	w = Window(f"Smash Hit Binary Modification Tool v{VERSION[0]}.{VERSION[1]}.{VERSION[2]} (by Knot126)", "510x600")
 	
 	w.label("This tool will let you add common patches to Smash Hit's main binary.")
 	
@@ -223,11 +284,17 @@ def gui(default_path = None):
 	
 	antitamper = w.checkbox("Disable anti-tamper protection (required)", default = True)
 	premium = w.checkbox("Enable premium by default")
-	encryption = w.checkbox("Disable save encryption")
-	balls = w.checkbox("Change starting ballcount to:")
+	encryption = w.checkbox("Nop out save encryption functions")
+	key = w.checkbox("Set encryption key to (string):")
+	key_val = w.textbox(True)
+	balls = w.checkbox("Set the starting ball count to (integer):")
 	balls_val = w.textbox(True)
-	fov = w.checkbox("Change the feild of view to:")
+	fov = w.checkbox("Set the field of view to (float):")
 	fov_val = w.textbox(True)
+	realpaths_segments = w.checkbox("Use absolute paths for segments")
+	realpaths = w.checkbox("Use absolute paths for rooms and levels")
+	package = w.checkbox("Load package, io and os modules in scripts")
+	vertical = w.checkbox("Allow running in vertical resolutions")
 	
 	def x():
 		"""
@@ -239,10 +306,16 @@ def gui(default_path = None):
 				"antitamper": antitamper.get(),
 				"premium": premium.get(),
 				"encryption": encryption.get(),
+				"key": key.get(),
+				"key_val": key_val.get(),
 				"balls": balls.get(),
 				"balls_val": balls_val.get(),
 				"fov": fov.get(),
 				"fov_val": fov_val.get(),
+				"realpaths_segments": realpaths_segments.get(),
+				"realpaths": realpaths.get(),
+				"package": package.get(),
+				"vertical": vertical.get(),
 			}
 			
 			applyPatches(location.get() if type(location) != str else location, patches)
