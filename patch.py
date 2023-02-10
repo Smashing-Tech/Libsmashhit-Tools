@@ -11,7 +11,7 @@ import os
 import sys
 import struct
 
-VERSION = (0, 2, 1)
+VERSION = (0, 2, 2)
 
 class File():
 	"""
@@ -119,14 +119,26 @@ def patch_checkpoints(f, value):
 	d = struct.unpack(">I", f.read(0x799e8))[0]
 	f.patch(0x799e8, struct.pack(">I", patch_const_mov_instruction_arm64(d, value)))
 	
-	# don't exactly know what this is for, but I think it's pointers to the meshes
+	# Don't exactly know what this is for, but I think it's pointers to the meshes
 	# by default it's 0x98 large (0x98 / 0x8 = 19) so it seems like there are 19 entries
 	# by default
 	d = struct.unpack(">I", f.read(0x78700))[0]
 	f.patch(0x78700, struct.pack(">I", patch_const_mov_instruction_arm64(d, (value + 6) * 8)))
 	
-	# Maybe this will fix some other stuff too?
-	f.patch(0x78668, b"\x1f\x20\x03\xd5")
+	# This is in an unused function but I will patch it anyways.
+	d = struct.unpack(">I", f.read(0x58010))[0]
+	f.patch(0x58010, struct.pack(">I", patch_const_mov_instruction_arm64(d, value)))
+	
+	# Get the highscores even if the checkpoint is above cp12
+	f.patch(0x57c18, b"\x1f\x20\x03\xd5")
+	f.patch(0x57c44, b"\x1f\x20\x03\xd5")
+	
+	# In Player::reportCheckpoint(int index) we need to report regardless...
+	f.patch(0x57bb0, b"\x1f\x20\x03\xd5")
+	
+	# Nop out the special cases for zen/versus/coop meshes
+	f.patch(0x7865c, b"\x1f\x20\x03\xd5")
+	f.patch(0x78664, b"\x1f\x20\x03\xd5")
 	f.patch(0x7866c, b"\x1f\x20\x03\xd5")
 
 def patch_fov(f, value):
@@ -309,9 +321,10 @@ def gui(default_path = None):
 	if (not location):
 		location = tkinter.filedialog.askopenfilename(title = "Pick libsmashhit.so", filetypes = (("Shared objects", "*.so"), ("All files", "*.*")))
 	
-	w.label("Path: " + location)
+	# w.label("Path: " + location)
 	
-	w.label("What patches would you like to apply?")
+	w.label("(Note: If you have issues typing in boxes, try clicking off and on the window first.)")
+	w.label("Please select what patches you would like to apply:")
 	
 	antitamper = w.checkbox("Disable anti-tamper protection (required)", default = True)
 	premium = w.checkbox("Enable premium by default")
@@ -324,8 +337,8 @@ def gui(default_path = None):
 	fov_val = w.textbox(True)
 	seconds = w.checkbox("Set the room time in seconds to (float):")
 	seconds_val = w.textbox(True)
-	#checkpoints = w.checkbox("Set the number of checkpoints to (integer):")
-	#checkpoints_val = w.textbox(True)
+	checkpoints = w.checkbox("Set the number of checkpoints to (integer):")
+	checkpoints_val = w.textbox(True)
 	realpaths_segments = w.checkbox("Use absolute paths for segments")
 	realpaths = w.checkbox("Use absolute paths for rooms and levels")
 	package = w.checkbox("Load package, io and os modules in scripts")
@@ -349,8 +362,8 @@ def gui(default_path = None):
 				"fov_val": fov_val.get(),
 				"seconds": seconds.get(),
 				"seconds_val": seconds_val.get(),
-				#"checkpoints": checkpoints.get(),
-				#"checkpoints_val": checkpoints_val.get(),
+				"checkpoints": checkpoints.get(),
+				"checkpoints_val": checkpoints_val.get(),
 				"realpaths_segments": realpaths_segments.get(),
 				"realpaths": realpaths.get(),
 				"package": package.get(),
