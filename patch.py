@@ -11,7 +11,7 @@ import os
 import sys
 import struct
 
-VERSION = (0, 2, 0)
+VERSION = (0, 2, 1)
 
 class File():
 	"""
@@ -108,12 +108,45 @@ def patch_balls(f, value):
 	
 	f.patch(0x57ff8, struct.pack("<I", value))
 
+def patch_checkpoints(f, value):
+	if (not value):
+		tkinter.messagebox.showerror("Checkpoints error", "You didn't put in a value for the number of checkpoints in your mod. Checkpoints won't be patched!")
+		return
+	
+	value = int(value)
+	
+	# This seems to be the number of rendered segments
+	d = struct.unpack(">I", f.read(0x799e8))[0]
+	f.patch(0x799e8, struct.pack(">I", patch_const_mov_instruction_arm64(d, value)))
+	
+	# don't exactly know what this is for, but I think it's pointers to the meshes
+	# by default it's 0x98 large (0x98 / 0x8 = 19) so it seems like there are 19 entries
+	# by default
+	d = struct.unpack(">I", f.read(0x78700))[0]
+	f.patch(0x78700, struct.pack(">I", patch_const_mov_instruction_arm64(d, (value + 6) * 8)))
+	
+	# Maybe this will fix some other stuff too?
+	f.patch(0x78668, b"\x1f\x20\x03\xd5")
+	f.patch(0x7866c, b"\x1f\x20\x03\xd5")
+
 def patch_fov(f, value):
 	if (not value):
 		tkinter.messagebox.showerror("Patch FoV error", "You didn't put in a value for the FoV you want. FoV won't be patched!")
 		return
 	
 	f.patch(0x1c945c, struct.pack("<f", float(value)))
+
+def patch_seconds(f, value):
+	value = float(value) if value else ""
+	
+	if (not value):
+		tkinter.messagebox.showwarning("Patch room length in seconds warning", "You didn't put in a room length in seconds. Room length in seconds will be set to the default! (32)")
+		value = 32.0
+	
+	tkinter.messagebox.showwarning("Patch room length in seconds warning", f"Changing the time a room takes breaks the game if you have improperly lengthed music. Music tracks must now be {value + 4} seconds long.")
+	
+	# Smash Hit normalises the value to the range [0.0, 1.0] so we need to take the inverse
+	f.patch(0x73f80, struct.pack("<f", 1 / value))
 
 def patch_realpaths_segments(f, value):
 	f.patch(0x2119f8, b"\x00")
@@ -164,6 +197,8 @@ PATCH_LIST = {
 	"key": patch_key,
 	"balls": patch_balls,
 	"fov": patch_fov,
+	"seconds": patch_seconds,
+	"checkpoints": patch_checkpoints,
 	"realpaths_segments": patch_realpaths_segments,
 	"realpaths": patch_realpaths,
 	"package": patch_package,
@@ -180,7 +215,7 @@ def applyPatches(location, patches):
 	ver = (f.read(0x1f38a0) + f.read(0x1f38a4))[:5].decode("utf-8")
 	
 	if (ver != '1.4.2'):
-		raise Exception(f"Not version 1.4.2 for ARM64. Got {ver} instead!")
+		raise Exception(f"Sorry, this doesn't seem to be version 1.4.2 for ARM64 devices. Make sure you have selected the ARM64 libsmashhit.so from 1.4.2 and try again. Tip: If you are using 1.4.3, you can download a copy of 1.4.2 and use that libsmashhit.so in place of the current one.")
 	
 	# For each patch ...
 	for p in patches:
@@ -272,13 +307,9 @@ def gui(default_path = None):
 	location = default_path
 	
 	if (not location):
-		#w.label("Where is your libsmashhit.so located? (Note: It will be overwitten.)")
-		#location = w.textbox()
-		
 		location = tkinter.filedialog.askopenfilename(title = "Pick libsmashhit.so", filetypes = (("Shared objects", "*.so"), ("All files", "*.*")))
-		w.label("Path: " + location)
-	else:
-		w.label("Path: " + location)
+	
+	w.label("Path: " + location)
 	
 	w.label("What patches would you like to apply?")
 	
@@ -291,6 +322,10 @@ def gui(default_path = None):
 	balls_val = w.textbox(True)
 	fov = w.checkbox("Set the field of view to (float):")
 	fov_val = w.textbox(True)
+	seconds = w.checkbox("Set the room time in seconds to (float):")
+	seconds_val = w.textbox(True)
+	#checkpoints = w.checkbox("Set the number of checkpoints to (integer):")
+	#checkpoints_val = w.textbox(True)
 	realpaths_segments = w.checkbox("Use absolute paths for segments")
 	realpaths = w.checkbox("Use absolute paths for rooms and levels")
 	package = w.checkbox("Load package, io and os modules in scripts")
@@ -312,6 +347,10 @@ def gui(default_path = None):
 				"balls_val": balls_val.get(),
 				"fov": fov.get(),
 				"fov_val": fov_val.get(),
+				"seconds": seconds.get(),
+				"seconds_val": seconds_val.get(),
+				#"checkpoints": checkpoints.get(),
+				#"checkpoints_val": checkpoints_val.get(),
 				"realpaths_segments": realpaths_segments.get(),
 				"realpaths": realpaths.get(),
 				"package": package.get(),
