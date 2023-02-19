@@ -11,7 +11,7 @@ import os
 import sys
 import struct
 
-VERSION = (0, 2, 2)
+VERSION = (0, 3, 0)
 
 class File():
 	"""
@@ -55,6 +55,17 @@ def patch_const_mov_instruction_arm64(old, value):
 	
 	last = (value & 0b111) << 29
 	first = ((value >> 3) & 0b11111111) << 16
+	new = last | first
+	
+	return (old | new)
+
+def patch_const_subs_instruction_arm64(old, value):
+	mask = 0b00000000111111000011111100000000
+	
+	old = old & (~mask)
+	
+	last = (value & 0b111111) << 18
+	first = ((value >> 6) & 0b111111) << 8
 	new = last | first
 	
 	return (old | new)
@@ -108,38 +119,24 @@ def patch_balls(f, value):
 	
 	f.patch(0x57ff8, struct.pack("<I", value))
 
-def patch_checkpoints(f, value):
+def patch_hit(f, value):
 	if (not value):
-		tkinter.messagebox.showerror("Checkpoints error", "You didn't put in a value for the number of checkpoints in your mod. Checkpoints won't be patched!")
+		tkinter.messagebox.showerror("Patch drop balls error", "You didn't put in a value for how many balls you want to drop when you hit something. Dropping balls won't be patched!")
 		return
 	
 	value = int(value)
 	
-	# This seems to be the number of rendered segments
-	d = struct.unpack(">I", f.read(0x799e8))[0]
-	f.patch(0x799e8, struct.pack(">I", patch_const_mov_instruction_arm64(d, value)))
+	# Patch the number of balls to subtract from the score
+	d = struct.unpack(">I", f.read(0x715f0))[0]
+	f.patch(0x715f0, struct.pack(">I", patch_const_subs_instruction_arm64(d, value)))
 	
-	# Don't exactly know what this is for, but I think it's pointers to the meshes
-	# by default it's 0x98 large (0x98 / 0x8 = 19) so it seems like there are 19 entries
-	# by default
-	d = struct.unpack(">I", f.read(0x78700))[0]
-	f.patch(0x78700, struct.pack(">I", patch_const_mov_instruction_arm64(d, (value + 6) * 8)))
+	# Patch the number of balls to drop
+	d = struct.unpack(">I", f.read(0x71624))[0]
+	f.patch(0x71624, struct.pack(">I", patch_const_mov_instruction_arm64(d, value)))
 	
-	# This is in an unused function but I will patch it anyways.
-	d = struct.unpack(">I", f.read(0x58010))[0]
-	f.patch(0x58010, struct.pack(">I", patch_const_mov_instruction_arm64(d, value)))
-	
-	# Get the highscores even if the checkpoint is above cp12
-	f.patch(0x57c18, b"\x1f\x20\x03\xd5")
-	f.patch(0x57c44, b"\x1f\x20\x03\xd5")
-	
-	# In Player::reportCheckpoint(int index) we need to report regardless...
-	f.patch(0x57bb0, b"\x1f\x20\x03\xd5")
-	
-	# Nop out the special cases for zen/versus/coop meshes
-	f.patch(0x7865c, b"\x1f\x20\x03\xd5")
-	f.patch(0x78664, b"\x1f\x20\x03\xd5")
-	f.patch(0x7866c, b"\x1f\x20\x03\xd5")
+	# This changes from "cmp w23,#0xa" to "cmp w23,w1" so that we don't
+	# need to make a specific patch for the comparision.
+	f.patch(0x7162c, b"\xff\x02\x01\x6b")
 
 def patch_fov(f, value):
 	if (not value):
@@ -168,25 +165,8 @@ def patch_realpaths(f, value):
 	f.patch(0x1f48c0, b"\x00")
 
 def patch_package(f, value):
-	### FIRST ATTEMPT ... to replace 'string' with 'package'
-	
-	# Here. Lies. Madness.
-	# f.patch(0x24d400, b"\xc8\x6a\x2f\x00\x00\x00\x00\x00")
-	# f.patch(0x24d408, b"\xa8\xac\x1a\x00\x00\x00\x00\x00")
-	
-	### SECOND ATTEMPT ... to just add it after the loop
-	
-	# In luaL_openlibs
-	# f.patch(0x947a8, b"\x97\xfd\x04\x14")  # b 0x002d3e04
-	
-	# In Editor::Editor
-	# f.patch(0x1d3e00, b"\xc0\x03\x5f\xd6") # ret
-	
-	# LABEL                                  0x002d3e04
-	# f.patch(0x1d3e04, b"\x73\x82\x0f\x91") # add x19, x19, #0x3e0 -- what we replaced the branch with above
-	# f.patch(0x1d3e08, b"\x69\x02\xfb\x17") # b 0x001947ac (start of loop)
-	
-	### THIRD ATTEMPT ... to chain it on after luaopen_base
+	### This was the THIRD ATTEMPT to make it work.
+	# It works by chaining it on after luaopen_base
 	# This one worked, even if its the worst hack :D
 	
 	f.patch(0xa71b8, b"\xe0\x03\x13\xaa") # Preserve param_1
@@ -208,9 +188,9 @@ PATCH_LIST = {
 	"encryption": patch_encryption,
 	"key": patch_key,
 	"balls": patch_balls,
+	"hit": patch_hit,
 	"fov": patch_fov,
 	"seconds": patch_seconds,
-	"checkpoints": patch_checkpoints,
 	"realpaths_segments": patch_realpaths_segments,
 	"realpaths": patch_realpaths,
 	"package": patch_package,
@@ -312,7 +292,7 @@ class Window():
 		self.window.mainloop()
 
 def gui(default_path = None):
-	w = Window(f"Smash Hit Binary Modification Tool v{VERSION[0]}.{VERSION[1]}.{VERSION[2]} (by Knot126)", "510x600")
+	w = Window(f"Smash Hit Binary Modification Tool v{VERSION[0]}.{VERSION[1]}.{VERSION[2]} (by Knot126)", "510x640")
 	
 	w.label("This tool will let you add common patches to Smash Hit's main binary.")
 	
@@ -320,8 +300,6 @@ def gui(default_path = None):
 	
 	if (not location):
 		location = tkinter.filedialog.askopenfilename(title = "Pick libsmashhit.so", filetypes = (("Shared objects", "*.so"), ("All files", "*.*")))
-	
-	# w.label("Path: " + location)
 	
 	w.label("(Note: If you have issues typing in boxes, try clicking off and on the window first.)")
 	w.label("Please select what patches you would like to apply:")
@@ -333,12 +311,12 @@ def gui(default_path = None):
 	key_val = w.textbox(True)
 	balls = w.checkbox("Set the starting ball count to (integer):")
 	balls_val = w.textbox(True)
+	hit = w.checkbox("Change dropped balls when hit to (integer):")
+	hit_val = w.textbox(True)
 	fov = w.checkbox("Set the field of view to (float):")
 	fov_val = w.textbox(True)
 	seconds = w.checkbox("Set the room time in seconds to (float):")
 	seconds_val = w.textbox(True)
-	checkpoints = w.checkbox("Set the number of checkpoints to (integer):")
-	checkpoints_val = w.textbox(True)
 	realpaths_segments = w.checkbox("Use absolute paths for segments")
 	realpaths = w.checkbox("Use absolute paths for rooms and levels")
 	package = w.checkbox("Load package, io and os modules in scripts")
@@ -360,10 +338,10 @@ def gui(default_path = None):
 				"balls_val": balls_val.get(),
 				"fov": fov.get(),
 				"fov_val": fov_val.get(),
+				"hit": hit.get(),
+				"hit_val": hit_val.get(),
 				"seconds": seconds.get(),
 				"seconds_val": seconds_val.get(),
-				"checkpoints": checkpoints.get(),
-				"checkpoints_val": checkpoints_val.get(),
 				"realpaths_segments": realpaths_segments.get(),
 				"realpaths": realpaths.get(),
 				"package": package.get(),
@@ -377,7 +355,7 @@ def gui(default_path = None):
 		except Exception as e:
 			tkinter.messagebox.showerror("Error", str(e))
 	
-	w.button("Patch libsmashhit.so!", x)
+	w.button("Patch game binary!", x)
 	
 	w.main()
 
