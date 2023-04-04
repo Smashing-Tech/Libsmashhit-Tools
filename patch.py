@@ -206,8 +206,8 @@ def applyPatches(location, patches):
 	
 	ver = (f.read(0x1f38a0) + f.read(0x1f38a4))[:5].decode("utf-8")
 	
-	if (ver != '1.4.2'):
-		raise Exception(f"Sorry, this doesn't seem to be version 1.4.2 for ARM64 devices. Make sure you have selected the ARM64 libsmashhit.so from 1.4.2 and try again. Tip: If you are using 1.4.3, you can download a copy of 1.4.2 and use that libsmashhit.so in place of the current one.")
+	if (ver != '1.4.2' and ver != '1.4.3'):
+		raise Exception(f"Sorry, this doesn't seem to be version 1.4.2 or version 1.4.3 for ARM64 devices. Make sure you have selected the ARM64 libsmashhit.so from 1.4.2 or 1.4.3 and try again.")
 	
 	# For each patch ...
 	for p in patches:
