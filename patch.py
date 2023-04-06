@@ -11,7 +11,7 @@ import os
 import sys
 import struct
 
-VERSION = (0, 3, 0)
+VERSION = (0, 3, 1)
 
 class File():
 	"""
