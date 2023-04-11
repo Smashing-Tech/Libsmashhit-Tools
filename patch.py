@@ -180,7 +180,8 @@ def patch_package(f, value):
 
 def patch_vertical(f, value):
 	f.patch(0x46828, b"\x47\x00\x00\x14") # Patch an if (gWidth < gHeight)
-	f.patch(0x46a48, b"\x1f\x20\x03\xd5") # Another if ...
+	f.patch(0x4693c, b"\x71\x00\x00\x14") # Another if ...
+	f.patch(0x46a48, b"\x1f\x20\x03\xd5")
 
 PATCH_LIST = {
 	"antitamper": patch_antitamper,
