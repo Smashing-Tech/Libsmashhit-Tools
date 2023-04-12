@@ -183,6 +183,9 @@ def patch_vertical(f, value):
 	f.patch(0x4693c, b"\x71\x00\x00\x14") # Another if ...
 	f.patch(0x46a48, b"\x1f\x20\x03\xd5")
 
+def patch_roomlength(f, value):
+	f.patch(0x6b6d4, b"\x1f\x20\x03\xd5") # Patch to use length property instead of 200 in versus/co-op
+
 PATCH_LIST = {
 	"antitamper": patch_antitamper,
 	"premium": patch_premium,
@@ -196,6 +199,7 @@ PATCH_LIST = {
 	"realpaths": patch_realpaths,
 	"package": patch_package,
 	"vertical": patch_vertical,
+	"roomlength": patch_roomlength,
 }
 
 def applyPatches(location, patches):
@@ -322,6 +326,7 @@ def gui(default_path = None):
 	realpaths = w.checkbox("Use absolute paths for rooms and levels")
 	package = w.checkbox("Load package, io and os modules in scripts")
 	vertical = w.checkbox("Allow running in vertical resolutions")
+	roomlength = w.checkbox("Allow using room length property in versus/co-op instead of sticking to 200")
 	
 	def x():
 		"""
@@ -347,6 +352,7 @@ def gui(default_path = None):
 				"realpaths": realpaths.get(),
 				"package": package.get(),
 				"vertical": vertical.get(),
+				"roomlength": roomlength.get(),
 			}
 			
 			applyPatches(location.get() if type(location) != str else location, patches)
