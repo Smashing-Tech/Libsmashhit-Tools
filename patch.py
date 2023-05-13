@@ -11,7 +11,7 @@ import os
 import sys
 import struct
 
-VERSION = (0, 3, 1)
+VERSION = (0, 3, 2)
 
 class File():
 	"""
@@ -164,6 +164,16 @@ def patch_realpaths(f, value):
 	f.patch(0x2118e8, b"\x00")
 	f.patch(0x1f48c0, b"\x00")
 
+def patch_ads(f, value):
+	if (len(value) != 5):
+		tkinter.messagebox.showerror("Ads error", "The mod ID is invalid.")
+		return
+	
+	value = value.encode('utf-8')
+	
+	f.patch(0x2129a0, b"http://smashhitlab.000webhostapp.com/\x00")
+	f.patch(0x2129c8, b"ads.php?id=" + value + b"&x=\x00")
+
 def patch_package(f, value):
 	### This was the THIRD ATTEMPT to make it work.
 	# It works by chaining it on after luaopen_base
@@ -197,6 +207,7 @@ PATCH_LIST = {
 	"seconds": patch_seconds,
 	"realpaths_segments": patch_realpaths_segments,
 	"realpaths": patch_realpaths,
+	"ads": patch_ads,
 	"package": patch_package,
 	"vertical": patch_vertical,
 	"roomlength": patch_roomlength,
@@ -322,6 +333,8 @@ def gui(default_path = None):
 	fov_val = w.textbox(True)
 	seconds = w.checkbox("Set the room time in seconds to (float):")
 	seconds_val = w.textbox(True)
+	ads = w.checkbox("Enable the Ad Service using mod ID (5 char string):")
+	ads_val = w.textbox(True)
 	realpaths_segments = w.checkbox("Use absolute paths for segments")
 	realpaths = w.checkbox("Use absolute paths for rooms and levels")
 	package = w.checkbox("Load package, io and os modules in scripts")
@@ -348,6 +361,8 @@ def gui(default_path = None):
 				"hit_val": hit_val.get(),
 				"seconds": seconds.get(),
 				"seconds_val": seconds_val.get(),
+				"ads": ads.get(),
+				"ads_val": ads_val.get(),
 				"realpaths_segments": realpaths_segments.get(),
 				"realpaths": realpaths.get(),
 				"package": package.get(),
