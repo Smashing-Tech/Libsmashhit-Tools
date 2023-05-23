@@ -11,7 +11,7 @@ import os
 import sys
 import struct
 
-VERSION = (0, 3, 2)
+VERSION = (0, 3, 3)
 
 class File():
 	"""
@@ -160,6 +160,9 @@ def patch_seconds(f, value):
 def patch_realpaths_segments(f, value):
 	f.patch(0x2119f8, b"\x00")
 
+def patch_realpaths_obstacles(f, value):
+	f.patch(0x211930, b"\x00")
+
 def patch_realpaths(f, value):
 	f.patch(0x2118e8, b"\x00")
 	f.patch(0x1f48c0, b"\x00")
@@ -206,6 +209,7 @@ PATCH_LIST = {
 	"fov": patch_fov,
 	"seconds": patch_seconds,
 	"realpaths_segments": patch_realpaths_segments,
+	"realpaths_obstacles": patch_realpaths_obstacles,
 	"realpaths": patch_realpaths,
 	"ads": patch_ads,
 	"package": patch_package,
@@ -251,9 +255,13 @@ class Window():
 		
 		self.position = -25
 		self.gap = 35
+		self.current = 0
 		
 		# Main frame
 		ttk.Frame(self.window)
+	
+	def getXPosTB(self):
+		return 10 + 500 * (self.gap % 2)
 	
 	def getYPos(self, flush = False):
 		self.position += self.gap if not flush else 0
@@ -308,7 +316,7 @@ class Window():
 		self.window.mainloop()
 
 def gui(default_path = None):
-	w = Window(f"Smash Hit Binary Modification Tool v{VERSION[0]}.{VERSION[1]}.{VERSION[2]} (by Knot126)", "510x640")
+	w = Window(f"Smash Hit Binary Modification Tool v{VERSION[0]}.{VERSION[1]}.{VERSION[2]} (by Knot126)", "510x680")
 	
 	w.label("This tool will let you add common patches to Smash Hit's main binary.")
 	
@@ -336,6 +344,7 @@ def gui(default_path = None):
 	ads = w.checkbox("Enable the Ad Service using mod ID (5 char string):")
 	ads_val = w.textbox(True)
 	realpaths_segments = w.checkbox("Use absolute paths for segments")
+	realpaths_obstacles = w.checkbox("Use absolute paths for obstacles")
 	realpaths = w.checkbox("Use absolute paths for rooms and levels")
 	package = w.checkbox("Load package, io and os modules in scripts")
 	vertical = w.checkbox("Allow running in vertical resolutions")
@@ -364,6 +373,7 @@ def gui(default_path = None):
 				"ads": ads.get(),
 				"ads_val": ads_val.get(),
 				"realpaths_segments": realpaths_segments.get(),
+				"realpaths_obstacles": realpaths_obstacles.get(),
 				"realpaths": realpaths.get(),
 				"package": package.get(),
 				"vertical": vertical.get(),
